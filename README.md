@@ -44,11 +44,14 @@ graph LR
 
 Every request transitions through a deterministic state machine:
 
-```
-PENDING ──▶ PLANNING ──▶ EXECUTING ──▶ SUCCESS
-                │              │
-                ▼              ▼
-          PLANNING_FAILED    FAILED
+```mermaid
+graph TD
+    A[PENDING] --> B[PLANNING]
+    B --> C[EXECUTING]
+    C --> D[SUCCESS]
+    
+    B --> E[PLANNING_FAILED]
+    C --> F[FAILED]
 ```
 
 - **PENDING → PLANNING**: The planner receives the raw text and attempts to extract intents, order IDs, and email addresses.
