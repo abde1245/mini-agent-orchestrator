@@ -26,16 +26,18 @@ FastAPI was chosen for three reasons:
 
 ## Architecture
 
-```
-  POST /process
-       │
-       ▼
-  ┌──────────┐     ┌───────────────┐     ┌──────────────┐
-  │  Planner │───▶│  Orchestrator │────▶│ Tool Registry│
-  │ (MockLLM)│     │ (Async Engine)│     │              │
-  │          │     │               │     │ cancel_order │
-  │ NL → Plan│     │ Guards + Exec │     │ send_email   │
-  └──────────┘     └───────────────┘     └──────────────┘
+```mermaid
+graph LR
+    A["POST /process"] --> B
+    
+    subgraph Pipeline [Core Pipeline]
+        B["Planner (MockLLM)<br/><i>NL ➔ Plan</i>"]
+        C["Orchestrator (Async Engine)<br/><i>Guards + Exec</i>"]
+        D["Tool Registry<br/>• cancel_order<br/>• send_email"]
+        
+        B --> C
+        C --> D
+    end
 ```
 
 ### State Machine
@@ -191,13 +193,3 @@ The test suite covers:
 7. Cancel-only request (no email step)
 8. Unique request IDs across calls
 
-## Walkthrough Script (2–3 minute video)
-
-**0:00–0:30 - What the system does.**
-Open the README or an architecture diagram. Explain the single-endpoint design: NL input → planner → orchestrator → tools → structured response. Mention the state machine and guardrail concept.
-
-**0:30–1:30 - Live API demo.**
-Start the server. Run the happy-path curl command, walk through the JSON response showing both steps succeeded. Then force a cancel failure (run the request a few times until the 20% failure triggers, or temporarily set `CANCEL_FAILURE_RATE = 1.0` in config). Show that `send_email` is `SKIPPED` and the status is `FAILED`.
-
-**1:30–2:30 - Deep dive: orchestrator + guardrail logic.**
-Open `orchestrator.py`. Walk through the `execute` method: the sequential loop, `asyncio.wait_for` timeout wrapping, the `_is_step_failure` check after each tool, and the `_skip_remaining` call that marks downstream steps. Highlight that tools are stateless and the orchestrator owns all control flow.
