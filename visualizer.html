@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Agent Orchestrator — Live Workflow Visualizer</title>
+<style>
+  :root {
+    --bg-primary: #0f1117;
+    --bg-secondary: #1a1d27;
+    --bg-card: #22253a;
+    --bg-input: #181b28;
+    --border: #2d3148;
+    --text-primary: #e4e6f0;
+    --text-secondary: #9498b0;
+    --text-muted: #636780;
+    --accent-blue: #4f8cff;
+    --accent-green: #34d399;
+    --accent-red: #f87171;
+    --accent-amber: #fbbf24;
+    --accent-purple: #a78bfa;
+    --glow-blue: rgba(79,140,255,0.35);
+    --glow-green: rgba(52,211,153,0.35);
+    --glow-red: rgba(248,113,113,0.35);
+    --glow-amber: rgba(251,191,36,0.25);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  /* Title bar */
+  .title-bar {
+    background: linear-gradient(135deg, #1a1d2e 0%, #252842 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .title-bar h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .title-bar h1 span { color: var(--accent-blue); }
+  .title-bar .badge {
+    font-size: 11px;
+    background: var(--accent-blue);
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  /* Main layout */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 300px 1fr 320px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Panels */
+  .panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel:last-child { border-right: none; }
+  .panel-header {
+    padding: 16px 20px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+
+  /* Left panel */
+  .ws-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .ws-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ws-dot.connected { background: var(--accent-green); box-shadow: 0 0 8px var(--glow-green); }
+  .ws-dot.disconnected { background: var(--accent-red); box-shadow: 0 0 8px var(--glow-red); }
+  .ws-dot.reconnecting { background: var(--accent-amber); animation: pulse-dot 1s infinite; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  textarea {
+    width: 100%;
+    height: 140px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: var(--accent-blue); }
+
+  .btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .btn {
+    padding: 11px 16px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #4f8cff, #6366f1);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { box-shadow: 0 4px 20px var(--glow-blue); transform: translateY(-1px); }
+  .btn-danger {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: #fff;
+  }
+  .btn-danger:hover:not(:disabled) { box-shadow: 0 4px 20px var(--glow-red); transform: translateY(-1px); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--text-secondary); color: var(--text-primary); }
+
+  /* Center: node graph */
+  .graph-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    position: relative;
+    overflow: auto;
+  }
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* Node card */
+  .node {
+    width: 185px;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    position: relative;
+    z-index: 2;
+    transition: border-color 0.4s, box-shadow 0.4s, transform 0.3s, opacity 0.4s;
+  }
+  .node-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    background: rgba(79,140,255,0.12);
+  }
+  .node-icon svg { width: 20px; height: 20px; }
+  .node-label {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    white-space: nowrap;
+  }
+  .node-status {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .node-details {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-height: 90px;
+    overflow-y: auto;
+    word-break: break-all;
+  }
+  .node-details strong { color: var(--text-primary); font-weight: 600; }
+
+  /* Node states */
+  .node.idle { border-color: var(--border); }
+  .node.idle .node-status { background: rgba(99,103,128,0.2); color: var(--text-muted); }
+
+  .node.active { border-color: var(--accent-blue); box-shadow: 0 0 24px var(--glow-blue); animation: pulse-node 2s infinite; }
+  .node.active .node-status { background: rgba(79,140,255,0.2); color: var(--accent-blue); }
+  .node.active .node-icon { background: rgba(79,140,255,0.2); }
+  @keyframes pulse-node { 0%,100%{box-shadow:0 0 16px var(--glow-blue)} 50%{box-shadow:0 0 32px var(--glow-blue)} }
+
+  .node.success { border-color: var(--accent-green); animation: flash-success 0.6s ease; }
+  .node.success .node-status { background: rgba(52,211,153,0.2); color: var(--accent-green); }
+  .node.success .node-icon { background: rgba(52,211,153,0.2); }
+  @keyframes flash-success { 0%{box-shadow:0 0 40px var(--glow-green)} 100%{box-shadow:0 0 8px var(--glow-green)} }
+
+  .node.failed { border-color: var(--accent-red); animation: shake 0.5s ease; }
+  .node.failed .node-status { background: rgba(248,113,113,0.2); color: var(--accent-red); }
+  .node.failed .node-icon { background: rgba(248,113,113,0.2); }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+
+  .node.skipped { border-color: var(--accent-amber); border-style: dashed; opacity: 0.7; }
+  .node.skipped .node-status { background: rgba(251,191,36,0.15); color: var(--accent-amber); }
+  .node.skipped .node-icon { background: rgba(251,191,36,0.12); }
+
+  /* Edges */
+  .edge {
+    width: 56px;
+    height: 2px;
+    background: var(--border);
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    transition: background 0.4s;
+  }
+  .edge.active {
+    background: var(--accent-blue);
+    box-shadow: 0 0 10px var(--glow-blue);
+  }
+  .edge.done {
+    background: var(--accent-green);
+  }
+  .edge.failed-edge {
+    background: var(--accent-red);
+  }
+  .edge .dot {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    top: -3px;
+    left: 0;
+    opacity: 0;
+    box-shadow: 0 0 8px var(--accent-blue);
+  }
+  .edge.active .dot {
+    opacity: 1;
+    animation: travel 0.8s linear infinite;
+  }
+  @keyframes travel { 0%{left:0} 100%{left:calc(100% - 8px)} }
+
+  /* Event log */
+  .event-row {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(45,49,72,0.5);
+    animation: fade-in 0.35s ease;
+  }
+  @keyframes fade-in { 0%{opacity:0;transform:translateY(-8px)} 100%{opacity:1;transform:translateY(0)} }
+  .event-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+  }
+  .event-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+  }
+  .event-pill.blue { background: rgba(79,140,255,0.2); color: var(--accent-blue); }
+  .event-pill.green { background: rgba(52,211,153,0.2); color: var(--accent-green); }
+  .event-pill.red { background: rgba(248,113,113,0.2); color: var(--accent-red); }
+  .event-pill.amber { background: rgba(251,191,36,0.15); color: var(--accent-amber); }
+  .event-pill.purple { background: rgba(167,139,250,0.2); color: var(--accent-purple); }
+  .event-data {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .event-data strong { color: var(--text-primary); }
+
+  /* State bar */
+  .state-bar {
+    border-top: 1px solid var(--border);
+    padding: 12px 28px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    transition: background 0.5s;
+  }
+  .state-bar.terminal-success { background: rgba(52,211,153,0.08); }
+  .state-bar.terminal-failed { background: rgba(248,113,113,0.08); }
+  .state-node {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 6px;
+    background: rgba(99,103,128,0.15);
+    color: var(--text-muted);
+    transition: all 0.4s;
+    white-space: nowrap;
+  }
+  .state-node.current {
+    background: rgba(79,140,255,0.2);
+    color: var(--accent-blue);
+    box-shadow: 0 0 12px var(--glow-blue);
+  }
+  .state-node.passed {
+    background: rgba(52,211,153,0.15);
+    color: var(--accent-green);
+  }
+  .state-node.failed-state {
+    background: rgba(248,113,113,0.15);
+    color: var(--accent-red);
+  }
+  .state-arrow {
+    color: var(--text-muted);
+    margin: 0 8px;
+    font-size: 14px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="title-bar">
+  <h1><span>Mini Agent Orchestrator</span> - Live Workflow Visualizer</h1>
+  <div class="badge">REAL-TIME</div>
+</div>
+
+<div class="main-layout">
+
+  <!-- LEFT: Input -->
+  <div class="panel">
+    <div class="ws-status">
+      <div class="ws-dot disconnected" id="wsDot"></div>
+      <span id="wsLabel">Disconnected</span>
+    </div>
+    <div class="panel-header">Request Input</div>
+    <div class="panel-body">
+      <textarea id="requestInput">Cancel my order #9921 and email me the confirmation at user@example.com</textarea>
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btnRun" disabled>Run Agent</button>
+        <button class="btn btn-danger" id="btnFail" disabled>Simulate Failure</button>
+        <button class="btn btn-ghost" id="btnReset">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: Graph -->
+  <div class="panel" style="border-right:1px solid var(--border)">
+    <div class="panel-header">Workflow Pipeline</div>
+    <div class="graph-container panel-body">
+      <div class="pipeline" id="pipeline">
+
+        <div class="node idle" id="node-input">
+          <div class="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-blue)"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="node-label">User Input</div>
+          <div class="node-status">IDLE</div>
+          <div class="node-details" id="details-input">Waiting for request...</div>
+        </div>
+
+        <div class="edge" id="edge-0"><div class="dot"></div></div>
+
+        <div class="node idle" id="node-planner">
+          <div class="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-purple)"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div class="node-label">Planner</div>
+          <div class="node-status">IDLE</div>
+          <div class="node-details" id="details-planner">Mock LLM planner</div>
+        </div>
+
+        <div class="edge" id="edge-1"><div class="dot"></div></div>
+
+        <div class="node idle" id="node-cancel_order">
+          <div class="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-red)"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </div>
+          <div class="node-label">cancel_order</div>
+          <div class="node-status">IDLE</div>
+          <div class="node-details" id="details-cancel_order">Awaiting plan...</div>
+        </div>
+
+        <div class="edge" id="edge-2"><div class="dot"></div></div>
+
+        <div class="node idle" id="node-send_email">
+          <div class="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-amber)"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/></svg>
+          </div>
+          <div class="node-label">send_email</div>
+          <div class="node-status">IDLE</div>
+          <div class="node-details" id="details-send_email">Awaiting plan...</div>
+        </div>
+
+        <div class="edge" id="edge-3"><div class="dot"></div></div>
+
+        <div class="node idle" id="node-result">
+          <div class="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-green)"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
+          </div>
+          <div class="node-label">Result</div>
+          <div class="node-status">IDLE</div>
+          <div class="node-details" id="details-result">Waiting...</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Event log -->
+  <div class="panel">
+    <div class="panel-header">Live Event Log</div>
+    <div class="panel-body" id="eventLog" style="display:flex;flex-direction:column-reverse;overflow-y:auto;">
+      <div id="eventList"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- State bar -->
+<div class="state-bar" id="stateBar">
+  <div class="state-node" id="s-pending">PENDING</div>
+  <span class="state-arrow">→</span>
+  <div class="state-node" id="s-planning">PLANNING</div>
+  <span class="state-arrow">→</span>
+  <div class="state-node" id="s-executing">EXECUTING</div>
+  <span class="state-arrow">→</span>
+  <div class="state-node" id="s-success">SUCCESS</div>
+  <span class="state-arrow" style="margin-left:24px">/</span>
+  <div class="state-node" id="s-failed">FAILED</div>
+</div>
+
+<script>
+const API_URL = "http://localhost:8000";
+const WS_URL  = "ws://localhost:8000/ws";
+const RECONNECT_INTERVAL = 3000;
+
+const nodeIds    = ["input","planner","cancel_order","send_email","result"];
+const edgeIds    = ["edge-0","edge-1","edge-2","edge-3"];
+const stateOrder = ["pending","planning","executing","success","failed"];
+
+let ws = null;
+let running = false;
+let reconnectTimer = null;
+
+const $ = (id) => document.getElementById(id);
+
+function setWsStatus(state) {
+  const dot = $("wsDot");
+  const label = $("wsLabel");
+  dot.className = "ws-dot " + state;
+  const labels = { connected:"Connected", disconnected:"Disconnected", reconnecting:"Reconnecting..." };
+  label.textContent = labels[state] || state;
+  $("btnRun").disabled  = state !== "connected" || running;
+  $("btnFail").disabled = state !== "connected" || running;
+}
+
+function connectWs() {
+  if (ws && ws.readyState <= 1) return;
+  setWsStatus("reconnecting");
+
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    setWsStatus("connected");
+    if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+  };
+
+  ws.onclose = () => {
+    setWsStatus("disconnected");
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      handleEvent(data);
+    } catch(err) { /* skip malformed */ }
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  setWsStatus("reconnecting");
+  reconnectTimer = setInterval(() => {
+    if (!ws || ws.readyState > 1) connectWs();
+  }, RECONNECT_INTERVAL);
+}
+
+function setNodeState(nodeKey, state, statusText) {
+  const el = $("node-" + nodeKey);
+  if (!el) return;
+  el.className = "node " + state;
+  const badge = el.querySelector(".node-status");
+  badge.textContent = statusText || state.toUpperCase();
+}
+
+function setNodeDetails(nodeKey, html) {
+  const el = $("details-" + nodeKey);
+  if (el) el.innerHTML = html;
+}
+
+function setEdge(idx, state) {
+  const el = $(edgeIds[idx]);
+  if (!el) return;
+  el.className = "edge" + (state ? " " + state : "");
+}
+
+function setStateBar(current, terminal) {
+  stateOrder.forEach(s => {
+    const el = $("s-" + s);
+    el.className = "state-node";
+  });
+
+  const bar = $("stateBar");
+  bar.className = "state-bar";
+
+  if (terminal === "SUCCESS") {
+    $("s-pending").classList.add("passed");
+    $("s-planning").classList.add("passed");
+    $("s-executing").classList.add("passed");
+    $("s-success").classList.add("passed");
+    bar.classList.add("terminal-success");
+  } else if (terminal === "FAILED" || terminal === "PLANNING_FAILED") {
+    $("s-pending").classList.add("passed");
+    $("s-planning").classList.add("passed");
+    if (terminal !== "PLANNING_FAILED") $("s-executing").classList.add("passed");
+    $("s-failed").classList.add("failed-state");
+    bar.classList.add("terminal-failed");
+  } else if (current) {
+    const idx = stateOrder.indexOf(current.toLowerCase());
+    for (let i = 0; i < idx; i++) {
+      $("s-" + stateOrder[i]).classList.add("passed");
+    }
+    if (idx >= 0) $("s-" + stateOrder[idx]).classList.add("current");
+  }
+}
+
+function formatKV(obj) {
+  if (!obj) return "";
+  return Object.entries(obj).map(([k,v]) => {
+    let val = (typeof v === "object" && v !== null) ? JSON.stringify(v) : String(v);
+    if (val.length > 60) val = val.substring(0, 57) + "...";
+    return "<strong>" + k + ":</strong> " + val;
+  }).join("<br>");
+}
+
+function addEvent(type, pillColor, data) {
+  const list = $("eventList");
+  const row = document.createElement("div");
+  row.className = "event-row";
+  const ts = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+  const details = Object.assign({}, data);
+  delete details.event; delete details.timestamp;
+
+  row.innerHTML =
+    '<div class="event-time">' + ts + '</div>' +
+    '<div class="event-pill ' + pillColor + '">' + type + '</div>' +
+    '<div class="event-data">' + formatKV(details) + '</div>';
+
+  list.insertBefore(row, list.firstChild);
+}
+
+function stepToNodeKey(step) {
+  if (step === 1) return "cancel_order";
+  if (step === 2) return "send_email";
+  return null;
+}
+
+function handleEvent(data) {
+  const ev = data.event;
+
+  switch(ev) {
+    case "workflow_started":
+      setNodeState("input", "success", "SENT");
+      setNodeDetails("input", "<strong>request_id:</strong> " + (data.request_id || "").substring(0,8) + "...");
+      setEdge(0, "active");
+      setStateBar("pending");
+      addEvent("Workflow Started", "blue", data);
+      break;
+
+    case "planning":
+      setNodeState("planner", "active", "PLANNING");
+      setEdge(0, "done");
+      setStateBar("planning");
+      addEvent("Planning", "purple", data);
+      break;
+
+    case "planning_failed":
+      setNodeState("planner", "failed", "FAILED");
+      setEdge(0, "done");
+      setNodeDetails("planner", "<strong>error:</strong> " + (data.error || ""));
+      addEvent("Planning Failed", "red", data);
+      break;
+
+    case "plan_ready":
+      setNodeState("planner", "success", "DONE");
+      setEdge(0, "done");
+      setEdge(1, "done");
+      if (data.tasks) {
+        setNodeDetails("planner", "<strong>steps:</strong> " + data.tasks.length);
+        data.tasks.forEach(t => {
+          const key = stepToNodeKey(t.step);
+          if (key) {
+            setNodeState(key, "idle", "PENDING");
+            setNodeDetails(key, formatKV(t.parameters));
+          }
+        });
+      }
+      setStateBar("executing");
+      addEvent("Plan Ready", "green", { tasks: data.tasks ? data.tasks.length + " steps" : "0" });
+      break;
+
+    case "step_started": {
+      const key = stepToNodeKey(data.step);
+      if (key) {
+        setNodeState(key, "active", "RUNNING");
+        const edgeIdx = key === "cancel_order" ? 1 : 2;
+        setEdge(edgeIdx, "active");
+      }
+      addEvent("Step " + data.step + " Started", "blue", { tool: data.tool });
+      break;
+    }
+
+    case "step_success": {
+      const key = stepToNodeKey(data.step);
+      if (key) {
+        setNodeState(key, "success", "SUCCESS");
+        if (data.result) {
+          setNodeDetails(key, formatKV(data.result));
+        }
+        const edgeIdx = key === "cancel_order" ? 2 : 3;
+        setEdge(edgeIdx === 2 ? 1 : 2, "done");
+      }
+      addEvent("Step " + data.step + " Success", "green", { tool: data.tool });
+      break;
+    }
+
+    case "step_failed": {
+      const key = stepToNodeKey(data.step);
+      if (key) {
+        setNodeState(key, "failed", "FAILED");
+        setNodeDetails(key, "<strong>error:</strong> " + (data.error || ""));
+        const edgeIdx = key === "cancel_order" ? 1 : 2;
+        setEdge(edgeIdx, "failed-edge");
+      }
+      addEvent("Step " + data.step + " Failed", "red", { tool: data.tool, error: data.error });
+      break;
+    }
+
+    case "step_skipped": {
+      const key = stepToNodeKey(data.step);
+      if (key) {
+        setNodeState(key, "skipped", "SKIPPED");
+        const edgeIdx = key === "cancel_order" ? 1 : 2;
+        setEdge(edgeIdx, "");
+      }
+      addEvent("Step " + data.step + " Skipped", "amber", { tool: data.tool });
+      break;
+    }
+
+    case "workflow_done":
+      if (data.status === "SUCCESS") {
+        setNodeState("result", "success", "SUCCESS");
+        setEdge(3, "done");
+        setStateBar(null, "SUCCESS");
+      } else {
+        setNodeState("result", "failed", data.status || "FAILED");
+        setEdge(3, "failed-edge");
+        setStateBar(null, data.status || "FAILED");
+      }
+      running = false;
+      $("btnRun").disabled  = false;
+      $("btnFail").disabled = false;
+      addEvent("Workflow Done", data.status === "SUCCESS" ? "green" : "red", { status: data.status });
+      break;
+
+    default:
+      addEvent(ev, "blue", data);
+  }
+}
+
+function resetUI() {
+  running = false;
+  nodeIds.forEach(k => {
+    setNodeState(k, "idle", "IDLE");
+    const defs = {
+      input: "Waiting for request...",
+      planner: "Mock LLM planner",
+      cancel_order: "Awaiting plan...",
+      send_email: "Awaiting plan...",
+      result: "Waiting..."
+    };
+    setNodeDetails(k, defs[k]);
+  });
+  edgeIds.forEach((_, i) => setEdge(i, ""));
+  $("eventList").innerHTML = "";
+  $("stateBar").className = "state-bar";
+  stateOrder.forEach(s => { $("s-" + s).className = "state-node"; });
+  $("btnRun").disabled  = !(ws && ws.readyState === 1);
+  $("btnFail").disabled = !(ws && ws.readyState === 1);
+}
+
+async function runAgent(forceFail) {
+  if (running) return;
+  resetUI();
+  running = true;
+  $("btnRun").disabled  = true;
+  $("btnFail").disabled = true;
+
+  const text = $("requestInput").value.trim();
+  if (!text) { running = false; resetUI(); return; }
+
+  setNodeState("input", "active", "SENDING");
+  setNodeDetails("input", text.length > 60 ? text.substring(0, 57) + "..." : text);
+
+  const headers = { "Content-Type": "application/json" };
+  if (forceFail) headers["X-Force-Fail"] = "true";
+
+  try {
+    const resp = await fetch(API_URL + "/process", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ request: text }),
+    });
+    if (!resp.ok && resp.status === 422) {
+      const err = await resp.json();
+      addEvent("Validation Error", "red", { detail: JSON.stringify(err.detail) });
+      setNodeState("input", "failed", "INVALID");
+      setNodeState("result", "failed", "ERROR");
+      setStateBar(null, "FAILED");
+      running = false;
+      $("btnRun").disabled  = false;
+      $("btnFail").disabled = false;
+    }
+  } catch(err) {
+    addEvent("Network Error", "red", { message: err.message });
+    setNodeState("input", "failed", "ERROR");
+    running = false;
+    $("btnRun").disabled  = false;
+    $("btnFail").disabled = false;
+  }
+}
+
+$("btnRun").addEventListener("click",  () => runAgent(false));
+$("btnFail").addEventListener("click", () => runAgent(true));
+$("btnReset").addEventListener("click", resetUI);
+
+connectWs();
+</script>
+</body>
+</html>
